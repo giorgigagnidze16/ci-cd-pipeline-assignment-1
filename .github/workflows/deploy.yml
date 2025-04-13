@@ -1,40 +1,102 @@
-name: Deploy Java App to Heroku
+name: CI + CD with Canary Release
 
 on:
-  workflow_run:
-    workflows: ["Java CI"]
-    types:
-      - completed
+  push:
+    branches:
+      - main
 
 jobs:
-  deploy:
+  test:
+    name: Java CI Tests
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      - name: Set up JDK 21
+      - name: Set up Java 21
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Build with Maven
-        run: mvn clean package
+      - name: Run Tests
+        run: mvn clean test
 
-      - name: Set up Git credentials for Heroku
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          echo "https://git:${{ secrets.HEROKU_API_KEY }}@git.heroku.com" > ~/.git-credentials
-          git config --global credential.helper store
+  deploy-staging:
+    name: Deploy to Heroku Staging
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Build
+        run: mvn clean package -DskipTests
 
       - name: Deploy to Heroku Staging
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          git remote add staging https://git.heroku.com/my-java-app-staging.git
-          git push staging `git subtree split --prefix . main`:refs/heads/main --force
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          git remote add staging https://heroku:${HEROKU_API_KEY}@git.heroku.com/my-java-app-staging.git
+          git push staging HEAD:main
 
-      - name: Deploy to Heroku Production
+  manual-approval:
+    name: Wait for QA Approval
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Await Approval
+        uses: hmarr/auto-approve-action@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-canary:
+    name: Deploy to Heroku Canary
+    needs: manual-approval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Build
+        run: mvn clean package -DskipTests
+
+      - name: Deploy to Canary
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          git remote add prod https://git.heroku.com/my-java-app-prod.git
-          git push prod `git subtree split --prefix . main`:refs/heads/main --force
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          git remote add canary https://heroku:${HEROKU_API_KEY}@git.heroku.com/my-java-app-canary.git
+          git push canary HEAD:main
+
+  deploy-production:
+    name: Promote to Full Production
+    needs: deploy-canary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Full Production
+        env:
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          git remote add prod https://heroku:${HEROKU_API_KEY}@git.heroku.com/my-java-app.git
+          git push prod HEAD:main
