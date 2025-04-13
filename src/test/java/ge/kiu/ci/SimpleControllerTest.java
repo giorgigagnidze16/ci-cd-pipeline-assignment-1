@@ -17,7 +17,7 @@ public class SimpleControllerTest {
 
   @Test
   void testGetHello() throws Exception {
-    System.out.println("Trigger CI");
+    System.out.println("Trigger CI/CD");
     mockMvc.perform(get("/hello"))
         .andExpect(status().isOk())
         .andExpect(content().string("Hello World"));
