@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline with Promotion and Rollback
 
 on:
   push:
@@ -9,18 +9,18 @@ jobs:
   ci:
     name: Build and Test Java App
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Java 21
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
+          cache: 'maven'
 
       - name: Build and test with Maven
         run: mvn clean verify
@@ -29,34 +29,49 @@ jobs:
     name: Deploy to Heroku Staging
     needs: ci
     runs-on: ubuntu-latest
-
+    environment:
+      name: staging
+      url: https://my-java-app-staging-d309e8d54e32.herokuapp.com/
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Deploy to Heroku Staging
+      - name: Deploy to Heroku Staging via Git
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          git remote add staging https://heroku:${HEROKU_API_KEY}@git.heroku.com/my-java-app-staging.git
+          git remote add staging https://heroku:${HEROKU_API_KEY}@git.heroku.com/my-java-app-staging.git || true
           git push staging HEAD:main --force
+          echo "::notice:: Staging deployment initiated. Verify at https://my-java-app-staging-d309e8d54e32.herokuapp.com/"
 
-  deploy-production:
-    name: Deploy to Heroku Production
+  approve-promotion:
+    name: Approve Production Promotion
     needs: deploy-staging
     runs-on: ubuntu-latest
-
+    environment:
+      name: production-approval
+      url: https://my-java-app-staging-d309e8d54e32.herokuapp.com/
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+      - name: Manual approval step
+        run: echo "Waiting for approval. Go to the GitHub Actions run page, find the 'production-approval' environment, and click 'Review deployments' to approve or reject."
 
-      - name: Deploy to Heroku Production
+  promote-production:
+    name: Promote to Heroku Production
+    needs: approve-promotion
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://my-java-app-prod-b268ed87cd7b.herokuapp.com/
+    steps:
+      - name: Install Heroku CLI
+        run: curl https://cli-assets.heroku.com/install.sh | sh
+
+      - name: Promote Staging slug to Production
         env:
           HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          git remote add prod https://heroku:${HEROKU_API_KEY}@git.heroku.com/my-java-app-prod.git
-          git push prod HEAD:main --force
+          echo "Promoting release from staging to production..."
+          heroku pipelines:promote -a my-java-app-staging --to my-java-app-prod
+          echo "::notice:: Promotion to production app 'my-java-app-prod' initiated."
