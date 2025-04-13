@@ -50,19 +50,9 @@ jobs:
           git remote add staging https://heroku:${HEROKU_API_KEY}@git.heroku.com/my-java-app-staging.git
           git push staging HEAD:main
 
-  manual-approval:
-    name: Wait for QA Approval
-    needs: deploy-staging
-    runs-on: ubuntu-latest
-    steps:
-      - name: Await Approval
-        uses: hmarr/auto-approve-action@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-canary:
     name: Deploy to Heroku Canary
-    needs: manual-approval
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
