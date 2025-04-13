@@ -46,7 +46,7 @@ jobs:
 
     - name: Deploy to Heroku Production
       env:
-        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
+        HEROKU_API_KEY: HRKU-8bcf0f6a-0fdb-44e9-9f11-13715ef5bbba
       run: |
         git remote add prod https://git.heroku.com/my-java-app-prod.git
         git push prod `git subtree split --prefix . main`:refs/heads/main --force
